@@ -2,125 +2,165 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Rubik's Cube 3D</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rubik's Cube Solver</title>
   <style>
     body {
-      margin: 0;
-      overflow: hidden;
-      font-family: Arial;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: #222;
+      color: white;
+      flex-direction: column;
     }
-    #controls {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      background: rgba(255, 255, 255, 0.8);
-      padding: 10px;
-      border-radius: 5px;
-      z-index: 1;
+    canvas {
+      background: #000;
     }
     button {
-      margin: 5px;
-      padding: 10px 15px;
+      margin: 10px;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      box-shadow: 2px 2px 5px 5px rgba(0, 0, 0, 0.097);
+      border-radius: .5rem;
+      border: none;
+    }
+    .controls{
+      display: flex;
+      gap:.3rem;
+      justify-content: center;
+      align-items: center;
     }
   </style>
 </head>
 <body>
+  <h1>Rubik's Cube</h1>
+  <div class="controls">
+  <button onclick="scramble()">Scramble</button>
+  <button onclick="startSolve()">Solve</button>
+  <button onclick="solveStep()" id="nextBtn" disabled>Next Step</button>
+  <button onclick="resetCube()">Reset</button>
+  </div>
+  <canvas id="cubeCanvas" width="500" height="300"></canvas>
 
-<div id="controls">
-  <button onclick="scrambleCube()">Scramble</button>
-  <button onclick="resetCube()">Reset</button><br>
-  <button onclick="showFace('top')">Top</button>
-  <button onclick="showFace('bottom')">Bottom</button>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
-<script>
-  let scene, camera, renderer;
-  const cubelets = [];
-  init();
-  animate();
-  function init() {
-    scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.z = 5;
-    renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
-    scene.add(ambientLight);
-    createRubiksCube();
-  }
-  function createRubiksCube() {
-    const size = 0.95;
-    const offset = 1.05;
-    const colors = ["#ffffff", "#ffff00", "#00ff00", "#0000ff", "#ff8000", "#ff0000"];
-    for (let x = -1; x <= 1; x++) {
-      for (let y = -1; y <= 1; y++) {
-        for (let z = -1; z <= 1; z++) {
-          const geometry = new THREE.BoxGeometry(size, size, size);
-          const materials = [
-            new THREE.MeshBasicMaterial({ color: colors[0] }), // Right - White
-            new THREE.MeshBasicMaterial({ color: colors[1] }), // Left - Yellow
-            new THREE.MeshBasicMaterial({ color: colors[2] }), // Top - Green
-            new THREE.MeshBasicMaterial({ color: colors[3] }), // Bottom - Blue
-            new THREE.MeshBasicMaterial({ color: colors[4] }), // Front - Orange
-            new THREE.MeshBasicMaterial({ color: colors[5] })  // Back - Red
-          ];
-          const cubelet = new THREE.Mesh(geometry, materials);
-          cubelet.position.set(x * offset, y * offset, z * offset);
-          cubelet.userData = { x, y, z };
-          cubelets.push(cubelet);
-          scene.add(cubelet);
+  <script>
+    const canvas = document.getElementById('cubeCanvas');
+    const ctx = canvas.getContext('2d');
+    const colors = ['white', 'red', 'green', 'yellow', 'orange', 'blue'];  
+    const FACE = { U: 0, R: 1, F: 2, D: 3, L: 4, B: 5 };
+    class Cube {
+      constructor() {
+        this.state = Array(6).fill().map((_, i) => Array(9).fill(i));
+        this.history = [];
+        this.solveSteps = [];
+        this.solvingIndex = 0;
+      }
+      turn(face) {
+        const s = this.state;
+        const rotateFace = f => {
+          const temp = [...s[f]];
+          s[f][0] = temp[6]; s[f][1] = temp[3]; s[f][2] = temp[0];
+          s[f][3] = temp[7]; s[f][4] = temp[4]; s[f][5] = temp[1];
+          s[f][6] = temp[8]; s[f][7] = temp[5]; s[f][8] = temp[2];
+        };
+        const cycle = (f, indices) => {
+          const temp = indices.map(i => s[f[0]][i]);
+          for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < indices.length; j++) {
+              s[f[i]][indices[j]] = s[f[i + 1]][indices[j]];
+            }
+          }
+          for (let j = 0; j < indices.length; j++) {
+            s[f[3]][indices[j]] = temp[j];
+          }
+        };
+        this.history.push(face);
+        switch (face) {
+          case 'U': rotateFace(FACE.U); cycle([FACE.B, FACE.R, FACE.F, FACE.L], [0,1,2]); break;
+          case 'D': rotateFace(FACE.D); cycle([FACE.F, FACE.R, FACE.B, FACE.L], [6,7,8]); break;
+          case 'F': rotateFace(FACE.F); cycle([FACE.U, FACE.R, FACE.D, FACE.L], [6,3,2]); break;
+          case 'B': rotateFace(FACE.B); cycle([FACE.U, FACE.L, FACE.D, FACE.R], [2,5,6]); break;
+          case 'L': rotateFace(FACE.L); cycle([FACE.U, FACE.F, FACE.D, FACE.B], [0,3,8]); break;
+          case 'R': rotateFace(FACE.R); cycle([FACE.U, FACE.B, FACE.D, FACE.F], [8,5,0]); break;
         }
       }
+      turnInverse(face) {
+        this.turn(face); this.turn(face); this.turn(face);
+      }
+      scramble(count = 10) {
+        const faces = ['U','D','F','B','L','R'];
+        for (let i = 0; i < count; i++) {
+          const f = faces[Math.floor(Math.random() * faces.length)];
+          this.turn(f);
+        }
+        this.solveSteps = [];
+        this.solvingIndex = 0;
+        document.getElementById("nextBtn").disabled = true;
+      }
+      prepareSolve() {
+        this.solveSteps = this.history.slice().reverse();
+        this.solvingIndex = 0;
+        document.getElementById("nextBtn").disabled = false;
+      }
+      solveStep() {
+        if (this.solvingIndex >= this.solveSteps.length) return false;
+        this.turnInverse(this.solveSteps[this.solvingIndex]);
+        this.solvingIndex++;
+        return true;
+      }
+      reset() {
+        this.state = Array(6).fill().map((_, i) => Array(9).fill(i));
+        this.history = [];
+        this.solveSteps = [];
+        this.solvingIndex = 0;
+        document.getElementById("nextBtn").disabled = true;
+      }
+      draw(ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const size = 30;
+        const startX = 60;
+        const startY = 20;
+        const drawFace = (faceIndex, xOffset, yOffset) => {
+          const face = this.state[faceIndex];
+          for (let i = 0; i < 9; i++) {
+            const x = xOffset + (i % 3) * size;
+            const y = yOffset + Math.floor(i / 3) * size;
+            ctx.fillStyle = colors[face[i]];
+            ctx.fillRect(x, y, size, size);
+            ctx.strokeRect(x, y, size, size);
+          }
+        };
+        drawFace(FACE.U, startX + size * 3, startY);
+        drawFace(FACE.L, startX, startY + size * 3);
+        drawFace(FACE.F, startX + size * 3, startY + size * 3);
+        drawFace(FACE.R, startX + size * 6, startY + size * 3);
+        drawFace(FACE.B, startX + size * 9, startY + size * 3);
+        drawFace(FACE.D, startX + size * 3, startY + size * 6);
+      }
     }
-  }
-  function scrambleCube() {
-    for (let i = 0; i < 20; i++) {
-      const axis = ["x", "y", "z"][Math.floor(Math.random() * 3)];
-      const layer = [-1, 0, 1][Math.floor(Math.random() * 3)];
-      rotateLayer(axis, layer);
+    const cube = new Cube();
+    cube.draw(ctx);
+    function scramble() {
+      cube.scramble();
+      cube.draw(ctx);
     }
-  }
-  function resetCube() {
-    cubelets.forEach(c => {
-      c.rotation.set(0, 0, 0);
-      c.position.set(c.userData.x * 1.05, c.userData.y * 1.05, c.userData.z * 1.05);
-    });
-  }
-  function rotateLayer(axis, layer) {
-    const angle = Math.PI / 2;
-    const direction = 1;
-    const layerCubes = cubelets.filter(c => Math.round(c.position[axis]) === layer);
-    const rotationMatrix = new THREE.Matrix4();
-    const rotationAxis = new THREE.Vector3(
-      axis === "x" ? 1 : 0,
-      axis === "y" ? 1 : 0,
-      axis === "z" ? 1 : 0
-    );
-    rotationMatrix.makeRotationAxis(rotationAxis, angle * direction);
-    layerCubes.forEach(cube => {
-      cube.position.applyMatrix4(rotationMatrix);
-      cube.rotation[axis] += angle * direction;
-    });
-  }
-  function showFace(face) {
-    const distance = 5;
-    switch (face) {
-      case 'top':
-        camera.position.set(0, distance, 0);
-        break;
-      case 'bottom':
-        camera.position.set(0, -distance, 0);
-        break;
+    function startSolve() {
+      cube.prepareSolve();
     }
-    camera.lookAt(0, 0, 0);
-  }
-  function animate() {
-    requestAnimationFrame(animate);
-    scene.rotation.y += 0.005;  
-    renderer.render(scene, camera);
-  }
-</script>
+    function solveStep() {
+      const btn = document.getElementById("nextBtn");
+      if (cube.solveStep()) {
+        cube.draw(ctx);
+      } else {
+        alert("Already Cube is Solved!");
+        btn.disabled = true;
+      }
+    }
+    function resetCube() {
+      cube.reset();
+      cube.draw(ctx);
+    }
+  </script>
 </body>
 </html>
